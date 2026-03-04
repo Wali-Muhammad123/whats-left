@@ -9,8 +9,9 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAppStore } from '@/store/app-store';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { logout } from '@/store/slices/authSlice';
+import { useGetKitchenQuery } from '@/store/apiSlice';
 import { Colors, Fonts, Radius, Shadow, Spacing } from '@/constants/theme';
 
 interface SettingsRow {
@@ -23,7 +24,12 @@ interface SettingsRow {
 }
 
 export default function ProfileScreen() {
-  const { user, logout, dietaryPreferences, householdSize, ingredients } = useAppStore();
+  const dispatch = useAppDispatch();
+  const user = useAppSelector((s) => s.auth.user);
+  const { data: kitchen } = useGetKitchenQuery();
+  const ingredients = kitchen?.ingredients ?? [];
+  const dietaryPreferences = kitchen?.dietary_preferences ?? [];
+  const householdSize = kitchen?.household_size ?? 2;
 
   const firstName = user?.name?.split(' ')[0] ?? 'Chef';
   const initials = user?.name
@@ -33,19 +39,14 @@ export default function ProfileScreen() {
     .toUpperCase()
     .slice(0, 2) ?? '?';
 
-  async function handleLogout() {
+  function handleLogout() {
     Alert.alert('Log Out', 'Are you sure you want to log out?', [
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Log Out',
         style: 'destructive',
-        onPress: async () => {
-          await Promise.all([
-            AsyncStorage.removeItem('authToken'),
-            AsyncStorage.removeItem('user'),
-            AsyncStorage.removeItem('hasCompletedKitchenSetup'),
-          ]);
-          logout();
+        onPress: () => {
+          dispatch(logout());
           router.replace('/auth');
         },
       },

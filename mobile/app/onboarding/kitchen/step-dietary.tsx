@@ -1,26 +1,32 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui/button';
 import { KitchenProgress } from '@/components/ui/kitchen-progress';
-import { useAppStore } from '@/store/app-store';
+import { useGetKitchenOptionsQuery, useGetKitchenQuery, useUpdateKitchenMutation } from '@/store/apiSlice';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 
-const DIETARY_OPTIONS: { id: string; label: string; emoji: string; description: string }[] = [
-  { id: 'vegetarian', label: 'Vegetarian', emoji: '🥦', description: 'No meat or fish' },
-  { id: 'vegan', label: 'Vegan', emoji: '🌱', description: 'No animal products' },
-  { id: 'gluten-free', label: 'Gluten-Free', emoji: '🌾', description: 'No wheat, barley, rye' },
-  { id: 'dairy-free', label: 'Dairy-Free', emoji: '🥛', description: 'No milk products' },
-  { id: 'halal', label: 'Halal', emoji: '☪️', description: 'Halal certified' },
-  { id: 'kosher', label: 'Kosher', emoji: '✡️', description: 'Kosher certified' },
-  { id: 'nut-free', label: 'Nut-Free', emoji: '🥜', description: 'No tree nuts or peanuts' },
-  { id: 'low-carb', label: 'Low Carb', emoji: '📉', description: 'Reduced carbohydrates' },
-];
+const DIETARY_META: Record<string, { label: string; emoji: string; description: string }> = {
+  vegetarian: { label: 'Vegetarian', emoji: '🥦', description: 'No meat or fish' },
+  vegan: { label: 'Vegan', emoji: '🌱', description: 'No animal products' },
+  'gluten-free': { label: 'Gluten-Free', emoji: '🌾', description: 'No wheat, barley, rye' },
+  'dairy-free': { label: 'Dairy-Free', emoji: '🥛', description: 'No milk products' },
+  halal: { label: 'Halal', emoji: '☪️', description: 'Halal certified' },
+  kosher: { label: 'Kosher', emoji: '✡️', description: 'Kosher certified' },
+  'nut-free': { label: 'Nut-Free', emoji: '🥜', description: 'No tree nuts or peanuts' },
+  'low-carb': { label: 'Low Carb', emoji: '📉', description: 'Reduced carbohydrates' },
+};
 
 export default function StepDietary() {
   const [selected, setSelected] = useState<string[]>([]);
-  const { setDietaryPreferences } = useAppStore();
+  const { data: options, isLoading: optionsLoading } = useGetKitchenOptionsQuery();
+  const { data: kitchen } = useGetKitchenQuery();
+  const [updateKitchen, { isLoading: updating }] = useUpdateKitchenMutation();
+
+  useEffect(() => {
+    if (kitchen?.dietary_preferences) setSelected(kitchen.dietary_preferences);
+  }, [kitchen?.dietary_preferences]);
 
   function toggleOption(id: string) {
     setSelected((prev) =>
@@ -28,14 +34,36 @@ export default function StepDietary() {
     );
   }
 
-  function handleNext() {
-    setDietaryPreferences(selected);
-    router.push('/onboarding/kitchen/step-household');
+  async function goToHousehold() {
+    try {
+      await updateKitchen({ dietary_preferences: selected }).unwrap();
+      router.push('/onboarding/kitchen/step-household');
+    } catch {
+      // Could show toast
+    }
   }
 
-  function handleSkip() {
-    setDietaryPreferences([]);
-    router.push('/onboarding/kitchen/step-household');
+  function handleNext() {
+    goToHousehold();
+  }
+
+  async function handleSkip() {
+    try {
+      await updateKitchen({ dietary_preferences: [] }).unwrap();
+      router.push('/onboarding/kitchen/step-household');
+    } catch {
+      router.push('/onboarding/kitchen/step-household');
+    }
+  }
+
+  const dietaryIds = options?.dietary_ids ?? [];
+
+  if (optionsLoading) {
+    return (
+      <SafeAreaView style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </SafeAreaView>
+    );
   }
 
   return (
@@ -49,21 +77,22 @@ export default function StepDietary() {
       </View>
 
       <View style={styles.optionsGrid}>
-        {DIETARY_OPTIONS.map((option) => {
-          const isSelected = selected.includes(option.id);
+        {dietaryIds.map((id) => {
+          const meta = DIETARY_META[id] ?? { label: id, emoji: '🥗', description: '' };
+          const isSelected = selected.includes(id);
           return (
             <TouchableOpacity
-              key={option.id}
-              onPress={() => toggleOption(option.id)}
+              key={id}
+              onPress={() => toggleOption(id)}
               activeOpacity={0.8}
               style={[styles.optionCard, isSelected && styles.optionCardSelected]}
             >
-              <Text style={styles.optionEmoji}>{option.emoji}</Text>
+              <Text style={styles.optionEmoji}>{meta.emoji}</Text>
               <View style={styles.optionText}>
                 <Text style={[styles.optionLabel, isSelected && styles.optionLabelSelected]}>
-                  {option.label}
+                  {meta.label}
                 </Text>
-                <Text style={styles.optionDescription}>{option.description}</Text>
+                <Text style={styles.optionDescription}>{meta.description}</Text>
               </View>
               <View style={[styles.checkbox, isSelected && styles.checkboxSelected]}>
                 {isSelected && <Text style={styles.checkboxTick}>✓</Text>}
@@ -74,7 +103,11 @@ export default function StepDietary() {
       </View>
 
       <View style={styles.footer}>
-        <Button label="Next: Household Size" onPress={handleNext} />
+        <Button
+          label="Next: Household Size"
+          onPress={handleNext}
+          loading={updating}
+        />
         <Button
           label="Skip for now"
           onPress={handleSkip}
@@ -179,5 +212,9 @@ const styles = StyleSheet.create({
   },
   skipButton: {
     paddingVertical: Spacing.xs,
+  },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

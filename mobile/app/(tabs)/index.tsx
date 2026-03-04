@@ -5,20 +5,15 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { RecipeCard, RecipeCardData } from '@/components/ui/recipe-card';
 import { RecipeGeneratorSheet } from '@/components/recipe-generator-sheet';
-import { useAppStore } from '@/store/app-store';
+import { useAppSelector } from '@/store/hooks';
+import { useGetKitchenQuery, useListRecipesQuery } from '@/store/apiSlice';
 import { Colors, Fonts, Radius, Shadow, Spacing } from '@/constants/theme';
-
-const MOCK_QUICK_PICKS: RecipeCardData[] = [
-  { id: '1', title: 'Garlic Butter Pasta', cuisine: 'Italian', prepTime: '20 min', matchPercent: 92 },
-  { id: '2', title: 'Chicken Stir Fry', cuisine: 'Chinese', prepTime: '25 min', matchPercent: 85 },
-  { id: '3', title: 'Veggie Omelette', cuisine: 'American', prepTime: '10 min', matchPercent: 98 },
-  { id: '4', title: 'Spiced Lentil Soup', cuisine: 'Indian', prepTime: '35 min', matchPercent: 78 },
-];
 
 function getGreeting(): string {
   const hour = new Date().getHours();
@@ -27,20 +22,41 @@ function getGreeting(): string {
   return 'Good evening';
 }
 
-function isPantryStale(lastUpdated: Date | null): boolean {
+function isPantryStale(lastUpdated: string | null): boolean {
   if (!lastUpdated) return false;
-  const daysSince = (Date.now() - lastUpdated.getTime()) / (1000 * 60 * 60 * 24);
+  const t = new Date(lastUpdated).getTime();
+  const daysSince = (Date.now() - t) / (1000 * 60 * 60 * 24);
   return daysSince > 7;
 }
 
+function toRecipeCardData(r: { id: string; title: string; cuisine: string; prep_time: string; match_percent?: number | null; image_url?: string | null; saved?: boolean }): RecipeCardData {
+  return {
+    id: r.id,
+    title: r.title,
+    cuisine: r.cuisine,
+    prepTime: r.prep_time,
+    matchPercent: r.match_percent ?? undefined,
+    imageUrl: r.image_url ?? undefined,
+    saved: r.saved,
+  };
+}
+
 export default function HomeScreen() {
-  const { user, pantryLastUpdated, ingredients } = useAppStore();
+  const user = useAppSelector((s) => s.auth.user);
+  const { data: kitchen } = useGetKitchenQuery();
+  const { data: quickPicksList, isLoading: loadingRecipes } = useListRecipesQuery({ limit: 4 });
   const [generatorVisible, setGeneratorVisible] = useState(false);
   const [savedRecipes, setSavedRecipes] = useState<string[]>([]);
 
   const greeting = getGreeting();
   const firstName = user?.name?.split(' ')[0] ?? 'Chef';
+  const pantryLastUpdated = kitchen?.pantry_last_updated ?? null;
   const showPantryAlert = isPantryStale(pantryLastUpdated);
+  const ingredients = kitchen?.ingredients ?? [];
+  const quickPicks: RecipeCardData[] = (quickPicksList ?? []).map((r) => ({
+    ...toRecipeCardData(r),
+    saved: savedRecipes.includes(r.id),
+  }));
 
   function toggleSave(id: string) {
     setSavedRecipes((prev) =>
@@ -119,15 +135,21 @@ export default function HomeScreen() {
             showsHorizontalScrollIndicator={false}
             contentContainerStyle={styles.horizontalScroll}
           >
-            {MOCK_QUICK_PICKS.map((recipe) => (
-              <RecipeCard
-                key={recipe.id}
-                recipe={{ ...recipe, saved: savedRecipes.includes(recipe.id) }}
-                onPress={() => router.push(`/recipe/${recipe.id}`)}
-                onSave={() => toggleSave(recipe.id)}
-                variant="vertical"
-              />
-            ))}
+            {loadingRecipes ? (
+              <View style={styles.quickPicksLoading}>
+                <ActivityIndicator size="small" color={Colors.primary} />
+              </View>
+            ) : (
+              quickPicks.map((recipe) => (
+                <RecipeCard
+                  key={recipe.id}
+                  recipe={recipe}
+                  onPress={() => router.push(`/recipe/${recipe.id}`)}
+                  onSave={() => toggleSave(recipe.id)}
+                  variant="vertical"
+                />
+              ))
+            )}
           </ScrollView>
         </View>
 
@@ -339,5 +361,12 @@ const styles = StyleSheet.create({
     fontFamily: Fonts.bodySemiBold,
     fontSize: 13,
     color: Colors.foundation,
+  },
+  quickPicksLoading: {
+    paddingVertical: Spacing.xl,
+    paddingLeft: Spacing.xl,
+    minWidth: 120,
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

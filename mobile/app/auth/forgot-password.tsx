@@ -5,13 +5,14 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScreenHeader } from '@/components/ui/screen-header';
+import { usePasswordRecoveryMutation } from '@/store/apiSlice';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 
 export default function ForgotPassword() {
   const [email, setEmail] = useState('');
   const [error, setError] = useState('');
-  const [loading, setLoading] = useState(false);
   const [sent, setSent] = useState(false);
+  const [passwordRecovery, { isLoading }] = usePasswordRecoveryMutation();
 
   async function handleSendReset() {
     if (!email.trim()) {
@@ -23,10 +24,12 @@ export default function ForgotPassword() {
       return;
     }
     setError('');
-    setLoading(true);
-    await new Promise((r) => setTimeout(r, 800));
-    setLoading(false);
-    setSent(true);
+    try {
+      await passwordRecovery(email.trim()).unwrap();
+      setSent(true);
+    } catch {
+      setError('Failed to send reset email. Check the address and try again.');
+    }
   }
 
   if (sent) {
@@ -76,7 +79,7 @@ export default function ForgotPassword() {
           <Button
             label="Send Reset Link"
             onPress={handleSendReset}
-            loading={loading}
+            loading={isLoading}
           />
         </View>
       </KeyboardAvoidingView>

@@ -10,11 +10,12 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScreenHeader } from '@/components/ui/screen-header';
-import { useAppStore } from '@/store/app-store';
+import { useAppDispatch } from '@/store/hooks';
+import { setCredentials, setUser, setHasCompletedKitchenSetup } from '@/store/slices/authSlice';
+import { useLoginMutation, useLazyGetMeQuery, useLazyGetKitchenQuery } from '@/store/apiSlice';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 
 interface FormErrors {
@@ -24,11 +25,14 @@ interface FormErrors {
 }
 
 export default function Login() {
+  const dispatch = useAppDispatch();
   const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [errors, setErrors] = useState<FormErrors>({});
-  const [loading, setLoading] = useState(false);
-  const { setUser, setHasCompletedKitchenSetup } = useAppStore();
+  const [login, { isLoading: loginLoading }] = useLoginMutation();
+  const [getMe] = useLazyGetMeQuery();
+  const [getKitchen] = useLazyGetKitchenQuery();
+  const loading = loginLoading;
 
   function validate(): boolean {
     const newErrors: FormErrors = {};
@@ -40,25 +44,20 @@ export default function Login() {
 
   async function handleLogin() {
     if (!validate()) return;
-    setLoading(true);
     try {
-      await new Promise((r) => setTimeout(r, 800));
-      const user = { id: '1', name: 'User', email: identifier };
-      await AsyncStorage.setItem('authToken', 'mock-token');
-      await AsyncStorage.setItem('user', JSON.stringify(user));
-      setUser(user);
-
-      const kitchenDone = await AsyncStorage.getItem('hasCompletedKitchenSetup');
-      if (kitchenDone === 'true') {
-        setHasCompletedKitchenSetup(true);
+      const tokenRes = await login({ username: identifier.trim(), password }).unwrap();
+      dispatch(setCredentials({ token: tokenRes.access_token }));
+      const userRes = await getMe().unwrap();
+      dispatch(setUser(userRes));
+      const kitchenRes = await getKitchen().unwrap();
+      dispatch(setHasCompletedKitchenSetup(kitchenRes.has_completed_setup));
+      if (kitchenRes.has_completed_setup) {
         router.replace('/(tabs)');
       } else {
         router.replace('/onboarding/kitchen/step-ingredients');
       }
     } catch {
       setErrors({ general: 'Invalid credentials. Please try again.' });
-    } finally {
-      setLoading(false);
     }
   }
 

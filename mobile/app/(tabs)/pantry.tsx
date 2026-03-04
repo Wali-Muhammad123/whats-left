@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -6,51 +6,65 @@ import {
   ScrollView,
   TouchableOpacity,
   TextInput,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { useAppStore } from '@/store/app-store';
+import { useGetKitchenQuery, useUpdateKitchenMutation, useGetKitchenOptionsQuery } from '@/store/apiSlice';
 import { Colors, Fonts, Radius, Shadow, Spacing } from '@/constants/theme';
 
 const CATEGORIES = ['All', 'Proteins', 'Vegetables', 'Grains', 'Dairy', 'Spices'];
 
-const CATEGORY_MAP: Record<string, string[]> = {
-  Proteins: ['Chicken', 'Beef', 'Eggs', 'Tofu', 'Salmon', 'Shrimp', 'Lentils', 'Chickpeas'],
-  Vegetables: ['Onion', 'Garlic', 'Tomato', 'Spinach', 'Carrot', 'Bell Pepper', 'Broccoli', 'Potato'],
-  Grains: ['Rice', 'Pasta', 'Bread', 'Oats', 'Quinoa', 'Flour', 'Noodles'],
-  Dairy: ['Milk', 'Butter', 'Cheese', 'Yogurt', 'Cream', 'Sour Cream'],
-  Spices: ['Salt', 'Pepper', 'Cumin', 'Paprika', 'Turmeric', 'Oregano', 'Chili Flakes', 'Cinnamon'],
-};
+function buildCategoryMap(ingredientOptions: Record<string, string[]>): Record<string, string[]> {
+  return ingredientOptions ?? {};
+}
 
-function getCategoryForIngredient(ingredient: string): string {
-  for (const [cat, items] of Object.entries(CATEGORY_MAP)) {
+function getCategoryForIngredient(ingredient: string, categoryMap: Record<string, string[]>): string {
+  for (const [cat, items] of Object.entries(categoryMap)) {
     if (items.includes(ingredient)) return cat;
   }
   return 'Other';
 }
 
 export default function PantryScreen() {
-  const { ingredients, setIngredients } = useAppStore();
+  const { data: kitchen, isLoading } = useGetKitchenQuery();
+  const { data: options } = useGetKitchenOptionsQuery();
+  const [updateKitchen, { isLoading: updating }] = useUpdateKitchenMutation();
   const [search, setSearch] = useState('');
   const [activeCategory, setActiveCategory] = useState('All');
+
+  const ingredients = kitchen?.ingredients ?? [];
+  const categoryMap = useMemo(
+    () => buildCategoryMap(options?.ingredient_options ?? {}),
+    [options?.ingredient_options]
+  );
 
   const filtered = ingredients.filter((ing) => {
     const matchesSearch = ing.toLowerCase().includes(search.toLowerCase());
     const matchesCategory =
-      activeCategory === 'All' || getCategoryForIngredient(ing) === activeCategory;
+      activeCategory === 'All' || getCategoryForIngredient(ing, categoryMap) === activeCategory;
     return matchesSearch && matchesCategory;
   });
 
   const grouped = CATEGORIES.slice(1).reduce<Record<string, string[]>>((acc, cat) => {
-    const items = filtered.filter((i) => getCategoryForIngredient(i) === cat);
+    const items = filtered.filter((i) => getCategoryForIngredient(i, categoryMap) === cat);
     if (items.length > 0) acc[cat] = items;
     return acc;
   }, {});
 
-  const otherItems = filtered.filter((i) => getCategoryForIngredient(i) === 'Other');
+  const otherItems = filtered.filter((i) => getCategoryForIngredient(i, categoryMap) === 'Other');
   if (otherItems.length > 0) grouped['Other'] = otherItems;
 
   function removeIngredient(item: string) {
-    setIngredients(ingredients.filter((i) => i !== item));
+    const next = ingredients.filter((i) => i !== item);
+    updateKitchen({ ingredients: next });
+  }
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </SafeAreaView>
+    );
   }
 
   return (
@@ -119,17 +133,14 @@ export default function PantryScreen() {
               {items.map((item) => (
                 <View key={item} style={[styles.ingredientRow, Shadow.sm]}>
                   <Text style={styles.ingredientEmoji}>
-                    {category === 'Proteins' ? '🥩' :
-                     category === 'Vegetables' ? '🥦' :
-                     category === 'Grains' ? '🌾' :
-                     category === 'Dairy' ? '🥛' :
-                     category === 'Spices' ? '🌶' : '📦'}
+                    {category === 'Proteins' ? '🥩' : category === 'Vegetables' ? '🥦' : category === 'Grains' ? '🌾' : category === 'Dairy' ? '🥛' : category === 'Spices' ? '🌶' : '📦'}
                   </Text>
                   <Text style={styles.ingredientName}>{item}</Text>
                   <TouchableOpacity
                     onPress={() => removeIngredient(item)}
                     style={styles.removeBtn}
                     activeOpacity={0.7}
+                    disabled={updating}
                   >
                     <Text style={styles.removeBtnText}>✕</Text>
                   </TouchableOpacity>
@@ -153,6 +164,10 @@ const styles = StyleSheet.create({
   container: {
     flex: 1,
     backgroundColor: Colors.background,
+  },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
   header: {
     paddingHorizontal: Spacing.xl,

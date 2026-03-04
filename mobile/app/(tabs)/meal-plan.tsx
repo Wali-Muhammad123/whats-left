@@ -5,8 +5,10 @@ import {
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
+import { useGetMealPlanQuery } from '@/store/apiSlice';
 import { Colors, Fonts, Radius, Shadow, Spacing } from '@/constants/theme';
 
 const DAYS = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -19,6 +21,7 @@ const SLOT_EMOJIS: Record<string, string> = {
 };
 
 export default function MealPlanScreen() {
+  const { data: mealPlan, isLoading } = useGetMealPlanQuery();
   const today = new Date();
   const dayOfWeek = today.getDay();
   const mondayOffset = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
@@ -29,6 +32,14 @@ export default function MealPlanScreen() {
     d.setDate(today.getDate() + mondayOffset + i);
     return d.getDate();
   });
+
+  if (isLoading) {
+    return (
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>

@@ -8,10 +8,10 @@ import {
 } from 'react-native';
 import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Button } from '@/components/ui/button';
 import { ScreenHeader } from '@/components/ui/screen-header';
-import { useAppStore } from '@/store/app-store';
+import { useAppDispatch } from '@/store/hooks';
+import { setCredentials } from '@/store/slices/authSlice';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 
 const OTP_LENGTH = 6;
@@ -22,7 +22,7 @@ export default function OTPScreen() {
   const [countdown, setCountdown] = useState(60);
   const [loading, setLoading] = useState(false);
   const inputRefs = useRef<(TextInput | null)[]>([]);
-  const { setUser } = useAppStore();
+  const dispatch = useAppDispatch();
 
   useEffect(() => {
     if (countdown <= 0) return;
@@ -51,10 +51,10 @@ export default function OTPScreen() {
     setLoading(true);
     try {
       await new Promise((r) => setTimeout(r, 800));
-      const user = { id: Date.now().toString(), name: name ?? 'User', phone };
-      await AsyncStorage.setItem('authToken', 'mock-token');
-      await AsyncStorage.setItem('user', JSON.stringify(user));
-      setUser(user);
+      dispatch(setCredentials({
+        token: 'mock-otp-token',
+        user: { id: `otp-${Date.now()}`, full_name: name ?? 'User', phone: phone ?? '' },
+      }));
       router.replace('/onboarding/kitchen/step-ingredients');
     } finally {
       setLoading(false);

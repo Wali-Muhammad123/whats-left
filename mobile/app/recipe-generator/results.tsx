@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import {
   View,
   Text,
@@ -13,24 +13,34 @@ import { RecipeCard, RecipeCardData } from '@/components/ui/recipe-card';
 import { ScreenHeader } from '@/components/ui/screen-header';
 import { BottomSheet } from '@/components/ui/bottom-sheet';
 import { Button } from '@/components/ui/button';
+import { useAppSelector } from '@/store/hooks';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 
-const MOCK_RESULTS: RecipeCardData[] = [
-  { id: '1', title: 'Garlic Butter Pasta', cuisine: 'Italian', prepTime: '20 min', matchPercent: 95 },
-  { id: '2', title: 'Creamy Tomato Risotto', cuisine: 'Italian', prepTime: '35 min', matchPercent: 88 },
-  { id: '3', title: 'Spaghetti Aglio e Olio', cuisine: 'Italian', prepTime: '15 min', matchPercent: 92 },
-  { id: '4', title: 'Pesto Chicken Pasta', cuisine: 'Italian', prepTime: '25 min', matchPercent: 76 },
-  { id: '5', title: 'Mushroom Carbonara', cuisine: 'Italian', prepTime: '30 min', matchPercent: 82 },
-];
+function toRecipeCardData(r: { id: string; title: string; cuisine: string; prep_time: string; match_percent?: number | null; image_url?: string | null }): RecipeCardData {
+  return {
+    id: r.id,
+    title: r.title,
+    cuisine: r.cuisine,
+    prepTime: r.prep_time,
+    matchPercent: r.match_percent ?? undefined,
+    imageUrl: r.image_url ?? undefined,
+  };
+}
 
 type SortOption = 'match' | 'time' | 'name';
 
 export default function RecipeResults() {
-  const { cuisine, time } = useLocalSearchParams<{ cuisine: string; time: string }>();
+  const { cuisine } = useLocalSearchParams<{ cuisine: string; time: string }>();
+  const lastGenerated = useAppSelector((s) => s.recipeGenerator.lastGeneratedRecipes);
   const [savedRecipes, setSavedRecipes] = useState<string[]>([]);
   const [filterVisible, setFilterVisible] = useState(false);
   const [sortBy, setSortBy] = useState<SortOption>('match');
   const [dietaryFilter, setDietaryFilter] = useState<string[]>([]);
+
+  const baseResults: RecipeCardData[] = useMemo(
+    () => lastGenerated.map((r) => ({ ...toRecipeCardData(r), saved: savedRecipes.includes(r.id) })),
+    [lastGenerated, savedRecipes]
+  );
 
   const cuisineLabel =
     cuisine === 'any'
@@ -49,7 +59,7 @@ export default function RecipeResults() {
     );
   }
 
-  const sortedResults = [...MOCK_RESULTS].sort((a, b) => {
+  const sortedResults = [...baseResults].sort((a, b) => {
     if (sortBy === 'match') return (b.matchPercent ?? 0) - (a.matchPercent ?? 0);
     if (sortBy === 'name') return a.title.localeCompare(b.title);
     return 0;

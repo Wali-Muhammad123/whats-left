@@ -10,11 +10,12 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { ScreenHeader } from '@/components/ui/screen-header';
-import { useAppStore } from '@/store/app-store';
+import { useAppDispatch } from '@/store/hooks';
+import { setCredentials, setUser } from '@/store/slices/authSlice';
+import { useSignupMutation, useLoginMutation, useLazyGetMeQuery } from '@/store/apiSlice';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
 
 interface FormErrors {
@@ -22,16 +23,20 @@ interface FormErrors {
   email?: string;
   password?: string;
   confirmPassword?: string;
+  general?: string;
 }
 
 export default function SignupEmail() {
+  const dispatch = useAppDispatch();
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [confirmPassword, setConfirmPassword] = useState('');
   const [errors, setErrors] = useState<FormErrors>({});
-  const [loading, setLoading] = useState(false);
-  const { setUser } = useAppStore();
+  const [signup, { isLoading: signupLoading }] = useSignupMutation();
+  const [login] = useLoginMutation();
+  const [getMe] = useLazyGetMeQuery();
+  const loading = signupLoading;
 
   function validate(): boolean {
     const newErrors: FormErrors = {};
@@ -47,17 +52,18 @@ export default function SignupEmail() {
 
   async function handleCreateAccount() {
     if (!validate()) return;
-    setLoading(true);
     try {
-      // Simulate API call
-      await new Promise((r) => setTimeout(r, 800));
-      const user = { id: Date.now().toString(), name: name.trim(), email: email.trim() };
-      await AsyncStorage.setItem('authToken', 'mock-token');
-      await AsyncStorage.setItem('user', JSON.stringify(user));
-      setUser(user);
+      await signup({ email: email.trim(), password, full_name: name.trim() }).unwrap();
+      const tokenRes = await login({ username: email.trim(), password }).unwrap();
+      dispatch(setCredentials({ token: tokenRes.access_token }));
+      const userRes = await getMe().unwrap();
+      dispatch(setUser(userRes));
       router.replace('/onboarding/kitchen/step-ingredients');
-    } finally {
-      setLoading(false);
+    } catch (e: unknown) {
+      const msg = e && typeof e === 'object' && 'data' in e && typeof (e as { data: unknown }).data === 'object'
+        ? String((e as { data: { detail?: string } }).data?.detail ?? 'Sign up failed')
+        : 'Sign up failed';
+      setErrors({ general: msg });
     }
   }
 
@@ -74,6 +80,12 @@ export default function SignupEmail() {
           showsVerticalScrollIndicator={false}
         >
           <Text style={styles.subtitle}>Let's get you set up</Text>
+
+          {errors.general && (
+            <View style={styles.errorBanner}>
+              <Text style={styles.errorBannerText}>{errors.general}</Text>
+            </View>
+          )}
 
           <Input
             label="Full Name"
@@ -141,6 +153,19 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     paddingTop: Spacing.md,
     paddingBottom: Spacing.xxl,
+  },
+  errorBanner: {
+    backgroundColor: `${Colors.error}15`,
+    borderRadius: 10,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.error,
+  },
+  errorBannerText: {
+    fontFamily: Fonts.body,
+    fontSize: 13,
+    color: Colors.error,
   },
   subtitle: {
     fontFamily: Fonts.body,

@@ -20,7 +20,7 @@ People forget what they have in the kitchen, and most recipes found online requi
 |---|---|
 | Framework | React Native (Expo SDK 54) |
 | Routing | expo-router (file-based, typed routes) |
-| State | Zustand |
+| State | Redux (RTK) + RTK Query + redux-persist |
 | Fonts | Roboto (headings) + Montserrat (body) via expo-google-fonts |
 | Storage | @react-native-async-storage/async-storage |
 | Animations | react-native-reanimated |
@@ -154,6 +154,19 @@ npx expo start
 
 Scan the QR code with the Expo Go app on your device.
 
+### API URL (backend)
+
+The app talks to the PantryPal FastAPI backend. Set the base URL via environment variable:
+
+- **`EXPO_PUBLIC_API_URL`** — e.g. `http://localhost:8000` for local dev. On a physical device use your machine’s LAN IP (e.g. `http://192.168.1.10:8000`). Android emulator: `http://10.0.2.2:8000`.
+
+Create a `.env` in the `mobile/` directory or export before running:
+
+```bash
+export EXPO_PUBLIC_API_URL=http://localhost:8000
+npx expo start
+```
+
 ---
 
 ## Project Structure
@@ -199,9 +212,15 @@ mobile/
 │   │   └── kitchen-progress.tsx
 │   └── recipe-generator-sheet.tsx
 ├── constants/
-│   └── theme.ts                       # Design tokens (colors, fonts, spacing, radii)
+│   ├── theme.ts                       # Design tokens (colors, fonts, spacing, radii)
+│   └── env.ts                         # API base URL (EXPO_PUBLIC_API_URL)
 └── store/
-    └── app-store.ts                   # Zustand store (auth, pantry, preferences)
+    ├── index.ts                       # Redux store + persist config
+    ├── hooks.ts                       # useAppDispatch, useAppSelector
+    ├── apiSlice.ts                    # RTK Query API (auth, kitchen, recipes, etc.)
+    └── slices/
+        ├── authSlice.ts               # Auth state (token, user, onboarding flags)
+        └── recipeGeneratorSlice.ts    # Last generated recipes for results screen
 ```
 
 ---

@@ -17,7 +17,9 @@ import Animated, {
 } from 'react-native-reanimated';
 import { Button } from '@/components/ui/button';
 import { ScreenHeader } from '@/components/ui/screen-header';
-import { useAppStore } from '@/store/app-store';
+import { useAppDispatch } from '@/store/hooks';
+import { setLastGeneratedRecipes } from '@/store/slices/recipeGeneratorSlice';
+import { useGetKitchenQuery, useGenerateRecipesMutation } from '@/store/apiSlice';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 
 const LOADING_MESSAGES = [
@@ -27,13 +29,24 @@ const LOADING_MESSAGES = [
   'Crafting your recipes…',
 ];
 
-const MOCK_MISSING = ['Olive Oil', 'Parmesan Cheese', 'Fresh Basil'];
+function timeParamToMinutes(timeId: string | undefined): number | undefined {
+  if (!timeId) return undefined;
+  if (timeId === 'under-15') return 15;
+  if (timeId === '15-30') return 30;
+  if (timeId === '30-60') return 60;
+  if (timeId === '1hr+') return 90;
+  return undefined;
+}
 
 export default function ConfirmIngredients() {
   const { cuisine, time } = useLocalSearchParams<{ cuisine: string; time: string }>();
-  const { ingredients } = useAppStore();
+  const dispatch = useAppDispatch();
+  const { data: kitchen } = useGetKitchenQuery();
+  const [generateRecipes, { isLoading: generating }] = useGenerateRecipesMutation();
+  const ingredients = kitchen?.ingredients ?? [];
   const [isLoading, setIsLoading] = useState(false);
   const [messageIndex, setMessageIndex] = useState(0);
+  const [error, setError] = useState<string | null>(null);
 
   const pulseScale = useSharedValue(1);
   const pulseOpacity = useSharedValue(0.5);
@@ -53,19 +66,26 @@ export default function ConfirmIngredients() {
       setMessageIndex((i) => (i + 1) % LOADING_MESSAGES.length);
     }, 1200);
 
-    const timeout = setTimeout(() => {
-      clearInterval(interval);
+    return () => clearInterval(interval);
+  }, [isLoading]);
+
+  async function runGenerate() {
+    try {
+      const result = await generateRecipes({
+        ingredients,
+        cuisine: cuisine && cuisine !== 'any' ? cuisine : undefined,
+        max_time_minutes: timeParamToMinutes(time),
+      }).unwrap();
+      dispatch(setLastGeneratedRecipes(result.recipes));
       router.replace({
         pathname: '/recipe-generator/results',
-        params: { cuisine, time },
+        params: { cuisine: cuisine ?? '', time: time ?? '' },
       });
-    }, 3600);
-
-    return () => {
-      clearInterval(interval);
-      clearTimeout(timeout);
-    };
-  }, [isLoading]);
+    } catch {
+      setError('Failed to generate recipes. Try again.');
+      setIsLoading(false);
+    }
+  }
 
   const pulseStyle = useAnimatedStyle(() => ({
     transform: [{ scale: pulseScale.value }],
@@ -73,7 +93,9 @@ export default function ConfirmIngredients() {
   }));
 
   function handleContinue() {
+    setError(null);
     setIsLoading(true);
+    runGenerate();
   }
 
   if (isLoading) {
@@ -85,7 +107,14 @@ export default function ConfirmIngredients() {
             <Text style={styles.loadingEmoji}>🥘</Text>
           </View>
           <Text style={styles.loadingMessage}>{LOADING_MESSAGES[messageIndex]}</Text>
-          <Text style={styles.loadingSubtext}>Generating personalized recipes for you</Text>
+          <Text style={styles.loadingSubtext}>
+            {error ?? 'Generating personalized recipes for you'}
+          </Text>
+          {error && (
+            <TouchableOpacity onPress={() => { setError(null); setIsLoading(false); }} style={styles.retryLink}>
+              <Text style={styles.retryText}>Tap to try again</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </SafeAreaView>
     );
@@ -109,6 +138,12 @@ export default function ConfirmIngredients() {
           </View>
         </View>
 
+        {error && (
+          <View style={styles.errorBanner}>
+            <Text style={styles.errorBannerText}>{error}</Text>
+          </View>
+        )}
+
         <Text style={styles.sectionTitle}>
           We'll use these ingredients from your pantry
         </Text>
@@ -130,21 +165,6 @@ export default function ConfirmIngredients() {
           )}
         </View>
 
-        {MOCK_MISSING.length > 0 && (
-          <>
-            <Text style={styles.missingSectionTitle}>Not in your pantry</Text>
-            <View style={styles.ingredientList}>
-              {MOCK_MISSING.map((item) => (
-                <View key={item} style={styles.ingredientRow}>
-                  <View style={[styles.checkCircle, styles.missingCircle]}>
-                    <Text style={styles.missingMark}>–</Text>
-                  </View>
-                  <Text style={[styles.ingredientText, styles.missingText]}>{item}</Text>
-                </View>
-              ))}
-            </View>
-          </>
-        )}
 
         <TouchableOpacity
           onPress={() => router.push('/(tabs)/pantry')}
@@ -316,5 +336,26 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: Colors.muted,
     textAlign: 'center',
+  },
+  retryLink: {
+    marginTop: Spacing.md,
+  },
+  retryText: {
+    fontFamily: Fonts.bodySemiBold,
+    fontSize: 14,
+    color: Colors.primary,
+  },
+  errorBanner: {
+    backgroundColor: `${Colors.error}15`,
+    borderRadius: Radius.md,
+    padding: Spacing.md,
+    marginBottom: Spacing.md,
+    borderLeftWidth: 3,
+    borderLeftColor: Colors.error,
+  },
+  errorBannerText: {
+    fontFamily: Fonts.body,
+    fontSize: 13,
+    color: Colors.error,
   },
 });

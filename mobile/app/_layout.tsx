@@ -1,7 +1,8 @@
-import { useEffect } from 'react';
+import { useEffect, useState, useRef, useCallback } from 'react';
 import { Stack, router } from 'expo-router';
 import * as SplashScreen from 'expo-splash-screen';
 import { StatusBar } from 'expo-status-bar';
+import { Provider } from 'react-redux';
 import {
   useFonts,
   Roboto_400Regular,
@@ -13,13 +14,21 @@ import {
   Montserrat_600SemiBold,
   Montserrat_700Bold,
 } from '@expo-google-fonts/montserrat';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAppStore } from '@/store/app-store';
+import { store, persistor } from '@/store';
+import { useAppDispatch, useAppSelector } from '@/store/hooks';
+import { setUser, logout } from '@/store/slices/authSlice';
+import { useTestTokenMutation } from '@/store/apiSlice';
 
 SplashScreen.preventAutoHideAsync();
 
-export default function RootLayout() {
-  const { setHasSeenSlides, setUser, setHasCompletedKitchenSetup } = useAppStore();
+function RootLayoutNav() {
+  const dispatch = useAppDispatch();
+  const hasSeenSlides = useAppSelector((s) => s.auth.hasSeenSlides);
+  const hasCompletedKitchenSetup = useAppSelector((s) => s.auth.hasCompletedKitchenSetup);
+  const token = useAppSelector((s) => s.auth.token);
+  const [testToken] = useTestTokenMutation();
+  const didBootstrap = useRef(false);
+  const [rehydrated, setRehydrated] = useState(() => persistor.getState().bootstrapped);
 
   const [fontsLoaded, fontError] = useFonts({
     Roboto_400Regular,
@@ -31,61 +40,49 @@ export default function RootLayout() {
   });
 
   useEffect(() => {
-    async function bootstrap() {
-      if (!fontsLoaded && !fontError) return;
-
-      try {
-        const [seenSlides, authToken, kitchenDone] = await Promise.all([
-          AsyncStorage.getItem('hasSeenSlides'),
-          AsyncStorage.getItem('authToken'),
-          AsyncStorage.getItem('hasCompletedKitchenSetup'),
-        ]);
-
-        if (seenSlides === 'true') setHasSeenSlides(true);
-        if (kitchenDone === 'true') setHasCompletedKitchenSetup(true);
-
-        if (authToken) {
-          const userJson = await AsyncStorage.getItem('user');
-          if (userJson) {
-            setUser(JSON.parse(userJson));
-          }
-        }
-      } catch {
-        // Silently handle storage errors
-      } finally {
-        await SplashScreen.hideAsync();
-        await navigateToCorrectScreen();
+    if (rehydrated) return;
+    const unsub = persistor.subscribe(() => {
+      if (persistor.getState().bootstrapped) {
+        setRehydrated(true);
+        unsub();
       }
-    }
+    });
+    const t = setTimeout(() => setRehydrated(true), 8000);
+    return () => { unsub(); clearTimeout(t); };
+  }, [rehydrated]);
 
-    bootstrap();
-  }, [fontsLoaded, fontError]);
+  const fontsReady = fontsLoaded || !!fontError;
 
-  async function navigateToCorrectScreen() {
+  const bootstrap = useCallback(async () => {
+    if (didBootstrap.current) return;
+    didBootstrap.current = true;
+
     try {
-      const [seenSlides, authToken, kitchenDone] = await Promise.all([
-        AsyncStorage.getItem('hasSeenSlides'),
-        AsyncStorage.getItem('authToken'),
-        AsyncStorage.getItem('hasCompletedKitchenSetup'),
-      ]);
-
-      if (!seenSlides) {
-        router.replace('/onboarding/slides');
-      } else if (!authToken) {
-        router.replace('/auth');
-      } else if (!kitchenDone) {
-        router.replace('/onboarding/kitchen/step-ingredients');
+      if (token) {
+        const result = await Promise.race([
+          testToken().unwrap(),
+          new Promise<never>((_, reject) => setTimeout(() => reject(new Error('timeout')), 10000)),
+        ]);
+        dispatch(setUser(result as { id: string; full_name?: string | null; email?: string; phone?: string | null }));
+        const route = hasCompletedKitchenSetup ? '/(tabs)' : '/onboarding/kitchen/step-ingredients';
+        router.replace(route as '/(tabs)' | '/onboarding/kitchen/step-ingredients');
       } else {
-        router.replace('/(tabs)');
+        const route = !hasSeenSlides ? '/onboarding/slides' : '/auth';
+        router.replace(route);
       }
     } catch {
-      router.replace('/onboarding/slides');
+      dispatch(logout());
+      const route = !hasSeenSlides ? '/onboarding/slides' : '/auth';
+      router.replace(route);
+    } finally {
+      await SplashScreen.hideAsync();
     }
-  }
+  }, [token, hasSeenSlides, hasCompletedKitchenSetup, dispatch, testToken]);
 
-  if (!fontsLoaded && !fontError) {
-    return null;
-  }
+  useEffect(() => {
+    if (!rehydrated || !fontsReady) return;
+    bootstrap();
+  }, [rehydrated, fontsReady, bootstrap]);
 
   return (
     <>
@@ -96,11 +93,23 @@ export default function RootLayout() {
         <Stack.Screen name="onboarding/kitchen/step-utensils" />
         <Stack.Screen name="onboarding/kitchen/step-dietary" />
         <Stack.Screen name="onboarding/kitchen/step-household" />
+        <Stack.Screen name="auth/index" />
+        <Stack.Screen name="auth/login" />
+        <Stack.Screen name="auth/signup-email" />
+        <Stack.Screen name="auth/forgot-password" />
         <Stack.Screen name="(tabs)" />
         <Stack.Screen name="recipe-generator/confirm-ingredients" />
         <Stack.Screen name="recipe-generator/results" />
         <Stack.Screen name="recipe/[id]" />
       </Stack>
     </>
+  );
+}
+
+export default function RootLayout() {
+  return (
+    <Provider store={store}>
+      <RootLayoutNav />
+    </Provider>
   );
 }

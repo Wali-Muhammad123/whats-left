@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,41 +6,29 @@ import {
   ScrollView,
   TextInput,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui/button';
 import { KitchenProgress } from '@/components/ui/kitchen-progress';
-import { useAppStore } from '@/store/app-store';
+import { useGetKitchenOptionsQuery, useGetKitchenQuery, useUpdateKitchenMutation } from '@/store/apiSlice';
 import { Colors, Fonts, Radius, Spacing } from '@/constants/theme';
 
-const INGREDIENT_GROUPS: { label: string; items: string[] }[] = [
-  {
-    label: 'Proteins',
-    items: ['Chicken', 'Beef', 'Eggs', 'Tofu', 'Salmon', 'Shrimp', 'Lentils', 'Chickpeas'],
-  },
-  {
-    label: 'Vegetables',
-    items: ['Onion', 'Garlic', 'Tomato', 'Spinach', 'Carrot', 'Bell Pepper', 'Broccoli', 'Potato'],
-  },
-  {
-    label: 'Grains',
-    items: ['Rice', 'Pasta', 'Bread', 'Oats', 'Quinoa', 'Flour', 'Noodles'],
-  },
-  {
-    label: 'Dairy',
-    items: ['Milk', 'Butter', 'Cheese', 'Yogurt', 'Cream', 'Sour Cream'],
-  },
-  {
-    label: 'Spices',
-    items: ['Salt', 'Pepper', 'Cumin', 'Paprika', 'Turmeric', 'Oregano', 'Chili Flakes', 'Cinnamon'],
-  },
-];
+function buildIngredientGroups(ingredientOptions: Record<string, string[]>): { label: string; items: string[] }[] {
+  return Object.entries(ingredientOptions).map(([label, items]) => ({ label, items }));
+}
 
 export default function StepIngredients() {
   const [selected, setSelected] = useState<string[]>([]);
   const [search, setSearch] = useState('');
-  const { setIngredients } = useAppStore();
+  const { data: options, isLoading: optionsLoading } = useGetKitchenOptionsQuery();
+  const { data: kitchen } = useGetKitchenQuery();
+  const [updateKitchen, { isLoading: updating }] = useUpdateKitchenMutation();
+
+  useEffect(() => {
+    if (kitchen?.ingredients) setSelected(kitchen.ingredients);
+  }, [kitchen?.ingredients]);
 
   function toggleIngredient(item: string) {
     setSelected((prev) =>
@@ -48,17 +36,33 @@ export default function StepIngredients() {
     );
   }
 
-  function handleNext() {
-    setIngredients(selected);
-    router.push('/onboarding/kitchen/step-utensils');
+  async function handleNext() {
+    try {
+      await updateKitchen({ ingredients: selected }).unwrap();
+      router.push('/onboarding/kitchen/step-utensils');
+    } catch {
+      // Could show toast
+    }
   }
 
-  const filteredGroups = INGREDIENT_GROUPS.map((group) => ({
+  const ingredientGroups = options?.ingredient_options
+    ? buildIngredientGroups(options.ingredient_options)
+    : [];
+
+  const filteredGroups = ingredientGroups.map((group) => ({
     ...group,
     items: group.items.filter((item) =>
       item.toLowerCase().includes(search.toLowerCase())
     ),
   })).filter((g) => g.items.length > 0);
+
+  if (optionsLoading) {
+    return (
+      <SafeAreaView style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </SafeAreaView>
+    );
+  }
 
   return (
     <SafeAreaView style={styles.container}>
@@ -134,7 +138,8 @@ export default function StepIngredients() {
         <Button
           label="Next: Utensils"
           onPress={handleNext}
-          disabled={selected.length === 0}
+          disabled={selected.length === 0 || updating}
+          loading={updating}
         />
       </View>
     </SafeAreaView>
@@ -269,5 +274,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.md,
     backgroundColor: Colors.background,
+  },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

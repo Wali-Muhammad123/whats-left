@@ -10,8 +10,8 @@ import {
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { useAppStore } from '@/store/app-store';
+import { useAppDispatch } from '@/store/hooks';
+import { setHasSeenSlides } from '@/store/slices/authSlice';
 import { Button } from '@/components/ui/button';
 import { ProgressDots } from '@/components/ui/progress-dots';
 import { Colors, Fonts, Spacing } from '@/constants/theme';
@@ -50,28 +50,22 @@ const SLIDES: Slide[] = [
   },
 ];
 
-async function markSlidesAsSeen() {
-  await AsyncStorage.setItem('hasSeenSlides', 'true');
-}
-
 export default function OnboardingSlides() {
+  const dispatch = useAppDispatch();
   const [currentIndex, setCurrentIndex] = useState(0);
   const flatListRef = useRef<FlatList<Slide>>(null);
-  const { setHasSeenSlides } = useAppStore();
 
-  const handleSkip = async () => {
-    await markSlidesAsSeen();
-    setHasSeenSlides(true);
+  const handleSkip = () => {
+    dispatch(setHasSeenSlides(true));
     router.replace('/auth');
   };
 
-  const handleNext = async () => {
+  const handleNext = () => {
     if (currentIndex < SLIDES.length - 1) {
       flatListRef.current?.scrollToIndex({ index: currentIndex + 1, animated: true });
       setCurrentIndex(currentIndex + 1);
     } else {
-      await markSlidesAsSeen();
-      setHasSeenSlides(true);
+      dispatch(setHasSeenSlides(true));
       router.replace('/auth');
     }
   };

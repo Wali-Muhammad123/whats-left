@@ -1,40 +1,40 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   TouchableOpacity,
+  ActivityIndicator,
 } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { Button } from '@/components/ui/button';
 import { KitchenProgress } from '@/components/ui/kitchen-progress';
-import { useAppStore } from '@/store/app-store';
+import { useGetKitchenOptionsQuery, useGetKitchenQuery, useUpdateKitchenMutation } from '@/store/apiSlice';
 import { Colors, Fonts, Radius, Shadow, Spacing } from '@/constants/theme';
 
-const UTENSILS: { id: string; emoji: string; label: string }[] = [
-  { id: 'pan', emoji: '🍳', label: 'Pan' },
-  { id: 'pot', emoji: '🫕', label: 'Pot' },
-  { id: 'oven', emoji: '🔥', label: 'Oven' },
-  { id: 'microwave', emoji: '📡', label: 'Microwave' },
-  { id: 'air-fryer', emoji: '💨', label: 'Air Fryer' },
-  { id: 'blender', emoji: '🥤', label: 'Blender' },
-  { id: 'knife', emoji: '🔪', label: 'Knife' },
-  { id: 'cutting-board', emoji: '🪵', label: 'Cutting Board' },
-  { id: 'wok', emoji: '🥘', label: 'Wok' },
-  { id: 'steamer', emoji: '♨️', label: 'Steamer' },
-  { id: 'grill', emoji: '🥩', label: 'Grill' },
-  { id: 'mixer', emoji: '🎂', label: 'Mixer' },
-  { id: 'pressure-cooker', emoji: '⚡', label: 'Pressure Cooker' },
-  { id: 'toaster', emoji: '🍞', label: 'Toaster' },
-  { id: 'colander', emoji: '🫙', label: 'Colander' },
-  { id: 'baking-sheet', emoji: '🍪', label: 'Baking Sheet' },
-];
+const UTENSIL_LABELS: Record<string, string> = {
+  pan: 'Pan', pot: 'Pot', oven: 'Oven', microwave: 'Microwave', 'air-fryer': 'Air Fryer',
+  blender: 'Blender', knife: 'Knife', 'cutting-board': 'Cutting Board', wok: 'Wok', steamer: 'Steamer',
+  grill: 'Grill', mixer: 'Mixer', 'pressure-cooker': 'Pressure Cooker', toaster: 'Toaster',
+  colander: 'Colander', 'baking-sheet': 'Baking Sheet',
+};
+const UTENSIL_EMOJIS: Record<string, string> = {
+  pan: '🍳', pot: '🫕', oven: '🔥', microwave: '📡', 'air-fryer': '💨', blender: '🥤', knife: '🔪',
+  'cutting-board': '🪵', wok: '🥘', steamer: '♨️', grill: '🥩', mixer: '🎂', 'pressure-cooker': '⚡',
+  toaster: '🍞', colander: '🫙', 'baking-sheet': '🍪',
+};
 
 export default function StepUtensils() {
   const [selected, setSelected] = useState<string[]>([]);
-  const { setUtensils } = useAppStore();
+  const { data: options, isLoading: optionsLoading } = useGetKitchenOptionsQuery();
+  const { data: kitchen } = useGetKitchenQuery();
+  const [updateKitchen, { isLoading: updating }] = useUpdateKitchenMutation();
+
+  useEffect(() => {
+    if (kitchen?.utensils) setSelected(kitchen.utensils);
+  }, [kitchen?.utensils]);
 
   function toggleUtensil(id: string) {
     setSelected((prev) =>
@@ -42,9 +42,23 @@ export default function StepUtensils() {
     );
   }
 
-  function handleNext() {
-    setUtensils(selected);
-    router.push('/onboarding/kitchen/step-dietary');
+  async function handleNext() {
+    try {
+      await updateKitchen({ utensils: selected }).unwrap();
+      router.push('/onboarding/kitchen/step-dietary');
+    } catch {
+      // Could show toast
+    }
+  }
+
+  const utensilIds = options?.utensil_ids ?? [];
+
+  if (optionsLoading) {
+    return (
+      <SafeAreaView style={[styles.container, styles.centered]}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </SafeAreaView>
+    );
   }
 
   return (
@@ -61,12 +75,12 @@ export default function StepUtensils() {
         contentContainerStyle={styles.grid}
         showsVerticalScrollIndicator={false}
       >
-        {UTENSILS.map((utensil) => {
-          const isSelected = selected.includes(utensil.id);
+        {utensilIds.map((id) => {
+          const isSelected = selected.includes(id);
           return (
             <TouchableOpacity
-              key={utensil.id}
-              onPress={() => toggleUtensil(utensil.id)}
+              key={id}
+              onPress={() => toggleUtensil(id)}
               activeOpacity={0.8}
               style={[styles.card, isSelected && styles.cardSelected, Shadow.sm]}
             >
@@ -75,9 +89,9 @@ export default function StepUtensils() {
                   <Text style={styles.checkText}>✓</Text>
                 </View>
               )}
-              <Text style={styles.cardEmoji}>{utensil.emoji}</Text>
+              <Text style={styles.cardEmoji}>{UTENSIL_EMOJIS[id] ?? '🍴'}</Text>
               <Text style={[styles.cardLabel, isSelected && styles.cardLabelSelected]}>
-                {utensil.label}
+                {UTENSIL_LABELS[id] ?? id}
               </Text>
             </TouchableOpacity>
           );
@@ -86,7 +100,11 @@ export default function StepUtensils() {
       </ScrollView>
 
       <View style={styles.footer}>
-        <Button label="Next: Dietary Preferences" onPress={handleNext} />
+        <Button
+          label="Next: Dietary Preferences"
+          onPress={handleNext}
+          loading={updating}
+        />
       </View>
     </SafeAreaView>
   );
@@ -180,5 +198,9 @@ const styles = StyleSheet.create({
     paddingHorizontal: Spacing.xl,
     paddingVertical: Spacing.md,
     backgroundColor: Colors.background,
+  },
+  centered: {
+    justifyContent: 'center',
+    alignItems: 'center',
   },
 });

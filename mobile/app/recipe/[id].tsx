@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -6,8 +6,9 @@ import {
   ScrollView,
   TouchableOpacity,
   Dimensions,
+  ActivityIndicator,
 } from 'react-native';
-import { router } from 'expo-router';
+import { router, useLocalSearchParams } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import Animated, {
   useAnimatedScrollHandler,
@@ -17,45 +18,25 @@ import Animated, {
   Extrapolation,
 } from 'react-native-reanimated';
 import { Button } from '@/components/ui/button';
+import { useGetRecipeQuery } from '@/store/apiSlice';
 import { Colors, Fonts, Radius, Shadow, Spacing } from '@/constants/theme';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const HERO_HEIGHT = 280;
 
-const MOCK_RECIPE = {
-  id: '1',
-  title: 'Garlic Butter Pasta',
-  cuisine: 'Italian',
-  prepTime: '20 min',
-  servings: 2,
-  matchPercent: 95,
-  ingredients: [
-    { name: 'Pasta', amount: '200g', have: true },
-    { name: 'Garlic', amount: '4 cloves', have: true },
-    { name: 'Butter', amount: '3 tbsp', have: true },
-    { name: 'Parmesan Cheese', amount: '50g', have: false },
-    { name: 'Fresh Parsley', amount: 'handful', have: false },
-    { name: 'Salt', amount: 'to taste', have: true },
-    { name: 'Black Pepper', amount: 'to taste', have: true },
-    { name: 'Olive Oil', amount: '2 tbsp', have: false },
-  ],
-  instructions: [
-    { step: 1, text: 'Bring a large pot of salted water to boil. Cook pasta according to package instructions until al dente.', time: '10 min' },
-    { step: 2, text: 'While pasta cooks, mince the garlic cloves finely.', time: '2 min' },
-    { step: 3, text: 'In a large pan over medium heat, melt butter with olive oil. Add garlic and sauté for 2 minutes until fragrant but not browned.', time: '3 min' },
-    { step: 4, text: 'Reserve 1 cup of pasta water before draining. Drain the pasta.', time: '1 min' },
-    { step: 5, text: 'Add drained pasta to the garlic butter pan. Toss well, adding pasta water as needed to create a silky sauce.', time: '3 min' },
-    { step: 6, text: 'Remove from heat. Add parmesan, fresh parsley, salt and pepper. Toss and serve immediately.', time: '1 min' },
-  ],
-};
-
 type ActiveTab = 'ingredients' | 'instructions' | 'nutrition';
 
 export default function RecipeDetail() {
+  const { id } = useLocalSearchParams<{ id: string }>();
+  const { data: recipe, isLoading, isError } = useGetRecipeQuery(id ?? '', { skip: !id });
   const [activeTab, setActiveTab] = useState<ActiveTab>('ingredients');
-  const [servings, setServings] = useState(MOCK_RECIPE.servings);
+  const [servings, setServings] = useState(2);
   const [saved, setSaved] = useState(false);
   const [expandedStep, setExpandedStep] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (recipe?.servings) setServings(recipe.servings);
+  }, [recipe?.servings]);
 
   const scrollY = useSharedValue(0);
 
@@ -82,8 +63,24 @@ export default function RecipeDetail() {
     opacity: interpolate(scrollY.value, [HERO_HEIGHT - 80, HERO_HEIGHT - 40], [0, 1], Extrapolation.CLAMP),
   }));
 
-  const haveIngredients = MOCK_RECIPE.ingredients.filter((i) => i.have);
-  const needIngredients = MOCK_RECIPE.ingredients.filter((i) => !i.have);
+  if (!id || isLoading) {
+    return (
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center' }]}>
+        <ActivityIndicator size="large" color={Colors.primary} />
+      </SafeAreaView>
+    );
+  }
+  if (isError || !recipe) {
+    return (
+      <SafeAreaView style={[styles.container, { justifyContent: 'center', alignItems: 'center', padding: Spacing.xl }]}>
+        <Text style={styles.comingSoonTitle}>Recipe not found</Text>
+        <Button label="Go back" onPress={() => router.back()} variant="secondary" />
+      </SafeAreaView>
+    );
+  }
+
+  const haveIngredients = recipe.ingredients.filter((i) => i.have);
+  const needIngredients = recipe.ingredients.filter((i) => !i.have);
 
   return (
     <View style={styles.container}>
@@ -94,7 +91,7 @@ export default function RecipeDetail() {
             <TouchableOpacity onPress={() => router.back()} style={styles.floatingBackBtn} activeOpacity={0.8}>
               <Text style={styles.floatingBackText}>←</Text>
             </TouchableOpacity>
-            <Text style={styles.floatingTitle} numberOfLines={1}>{MOCK_RECIPE.title}</Text>
+            <Text style={styles.floatingTitle} numberOfLines={1}>{recipe.title}</Text>
             <TouchableOpacity onPress={() => setSaved(!saved)} style={styles.floatingBackBtn} activeOpacity={0.8}>
               <Text style={styles.floatingBackText}>{saved ? '🔖' : '🏷'}</Text>
             </TouchableOpacity>
@@ -135,14 +132,14 @@ export default function RecipeDetail() {
         {/* Content */}
         <View style={styles.content}>
           {/* Title + badges */}
-          <Text style={styles.title}>{MOCK_RECIPE.title}</Text>
+          <Text style={styles.title}>{recipe.title}</Text>
 
           <View style={styles.badgeRow}>
             <View style={styles.cuisineBadge}>
-              <Text style={styles.cuisineBadgeText}>{MOCK_RECIPE.cuisine}</Text>
+              <Text style={styles.cuisineBadgeText}>{recipe.cuisine}</Text>
             </View>
             <View style={styles.badge}>
-              <Text style={styles.badgeText}>⏱ {MOCK_RECIPE.prepTime}</Text>
+              <Text style={styles.badgeText}>⏱ {recipe.prep_time}</Text>
             </View>
             <View style={styles.servingsStepper}>
               <TouchableOpacity
@@ -167,10 +164,10 @@ export default function RecipeDetail() {
           <View style={styles.matchSection}>
             <View style={styles.matchLabelRow}>
               <Text style={styles.matchLabel}>Pantry Match</Text>
-              <Text style={styles.matchPercent}>{MOCK_RECIPE.matchPercent}%</Text>
+              <Text style={styles.matchPercent}>{recipe.match_percent ?? 0}%</Text>
             </View>
             <View style={styles.matchBarBg}>
-              <View style={[styles.matchBarFill, { width: `${MOCK_RECIPE.matchPercent}%` }]} />
+              <View style={[styles.matchBarFill, { width: `${recipe.match_percent ?? 0}%` }]} />
             </View>
           </View>
 
@@ -194,13 +191,13 @@ export default function RecipeDetail() {
           {activeTab === 'ingredients' && (
             <View style={styles.tabContent}>
               <Text style={styles.subheading}>In your pantry ({haveIngredients.length})</Text>
-              {haveIngredients.map((ing) => (
+              {haveIngredients.map((ing: { name: string; amount?: string }) => (
                 <View key={ing.name} style={styles.ingredientRow}>
                   <View style={styles.ingCheckCircle}>
                     <Text style={styles.ingCheckText}>✓</Text>
                   </View>
                   <Text style={styles.ingName}>{ing.name}</Text>
-                  <Text style={styles.ingAmount}>{ing.amount}</Text>
+                  <Text style={styles.ingAmount}>{ing.amount ?? ''}</Text>
                 </View>
               ))}
 
@@ -209,14 +206,14 @@ export default function RecipeDetail() {
                   <Text style={[styles.subheading, styles.subheadingMissing]}>
                     Need to buy ({needIngredients.length})
                   </Text>
-                  {needIngredients.map((ing) => (
+                  {needIngredients.map((ing: { name: string; amount?: string }) => (
                     <View key={ing.name} style={[styles.ingredientRow, styles.ingredientRowMissing]}>
                       <View style={[styles.ingCheckCircle, styles.ingMissingCircle]}>
                         <Text style={styles.ingMissingText}>+</Text>
                       </View>
                       <Text style={[styles.ingName, styles.ingNameMissing]}>{ing.name}</Text>
                       <View style={styles.addToListRow}>
-                        <Text style={styles.ingAmount}>{ing.amount}</Text>
+                        <Text style={styles.ingAmount}>{ing.amount ?? ''}</Text>
                         <TouchableOpacity style={styles.addToListBtn} activeOpacity={0.7}>
                           <Text style={styles.addToListText}>+ List</Text>
                         </TouchableOpacity>
@@ -230,7 +227,7 @@ export default function RecipeDetail() {
 
           {activeTab === 'instructions' && (
             <View style={styles.tabContent}>
-              {MOCK_RECIPE.instructions.map((step) => (
+              {recipe.instructions.map((step: { step: number; text: string; time?: string }) => (
                 <TouchableOpacity
                   key={step.step}
                   onPress={() => setExpandedStep(expandedStep === step.step ? null : step.step)}
@@ -242,7 +239,7 @@ export default function RecipeDetail() {
                       <Text style={styles.stepNumberText}>{step.step}</Text>
                     </View>
                     <View style={styles.stepMeta}>
-                      <Text style={styles.stepTimeText}>⏱ {step.time}</Text>
+                      <Text style={styles.stepTimeText}>⏱ {step.time ?? ''}</Text>
                       <Text style={styles.stepChevron}>
                         {expandedStep === step.step ? '▲' : '▼'}
                       </Text>

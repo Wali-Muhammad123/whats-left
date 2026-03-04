@@ -1,16 +1,23 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TouchableOpacity } from 'react-native';
 import { router } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Button } from '@/components/ui/button';
 import { KitchenProgress } from '@/components/ui/kitchen-progress';
-import { useAppStore } from '@/store/app-store';
+import { useAppDispatch } from '@/store/hooks';
+import { setHasCompletedKitchenSetup } from '@/store/slices/authSlice';
+import { useGetKitchenQuery, useUpdateKitchenMutation } from '@/store/apiSlice';
 import { Colors, Fonts, Radius, Shadow, Spacing } from '@/constants/theme';
 
 export default function StepHousehold() {
-  const [count, setCount] = useState(2);
-  const { setHouseholdSize, setHasCompletedKitchenSetup } = useAppStore();
+  const dispatch = useAppDispatch();
+  const { data: kitchen } = useGetKitchenQuery();
+  const [updateKitchen, { isLoading: updating }] = useUpdateKitchenMutation();
+  const [count, setCount] = useState(kitchen?.household_size ?? 2);
+
+  useEffect(() => {
+    if (kitchen?.household_size != null) setCount(kitchen.household_size);
+  }, [kitchen?.household_size]);
 
   function increment() {
     setCount((c) => Math.min(c + 1, 10));
@@ -21,10 +28,13 @@ export default function StepHousehold() {
   }
 
   async function handleFinish() {
-    setHouseholdSize(count);
-    setHasCompletedKitchenSetup(true);
-    await AsyncStorage.setItem('hasCompletedKitchenSetup', 'true');
-    router.replace('/(tabs)');
+    try {
+      await updateKitchen({ household_size: count, has_completed_setup: true }).unwrap();
+      dispatch(setHasCompletedKitchenSetup(true));
+      router.replace('/(tabs)');
+    } catch {
+      // Could show toast
+    }
   }
 
   const personLabel = count === 1 ? 'person' : 'people';
@@ -88,7 +98,11 @@ export default function StepHousehold() {
       </View>
 
       <View style={styles.footer}>
-        <Button label="Finish Setup" onPress={handleFinish} />
+        <Button
+          label="Finish Setup"
+          onPress={handleFinish}
+          loading={updating}
+        />
       </View>
     </SafeAreaView>
   );
