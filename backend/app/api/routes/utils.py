@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from pydantic.networks import EmailStr
 
 from app.api.deps import get_current_active_superuser
-from app.models import Message
+from app.shared.schemas import Message
 from app.utils import generate_test_email, send_email
 
 router = APIRouter()
@@ -29,3 +29,20 @@ def test_email(email_to: EmailStr) -> Message:
 @router.get("/health-check/")
 async def health_check() -> bool:
     return True
+
+
+@router.get("/kitchen-options")
+def get_kitchen_options() -> dict:
+    """Return ingredient categories, utensil ids, and dietary ids for mobile."""
+    from app.domains.kitchen.constants import (
+        DIETARY_IDS,
+        INGREDIENT_OPTIONS,
+        UTENSIL_IDS,
+    )
+
+    return {
+        "ingredient_categories": list(INGREDIENT_OPTIONS.keys()),
+        "ingredient_options": INGREDIENT_OPTIONS,
+        "utensil_ids": UTENSIL_IDS,
+        "dietary_ids": DIETARY_IDS,
+    }

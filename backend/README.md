@@ -9,6 +9,15 @@
 
 Start the local development environment with Docker Compose following the guide in [../development.md](../development.md).
 
+**After code or migration changes:** Rebuild the backend image so the container has the latest routes and migrations, then restart so prestart runs the new migrations:
+
+```bash
+docker compose build --no-cache prestart backend
+docker compose up -d
+```
+
+Then open `http://localhost:8000/api/v1/openapi.json` to confirm all API routes appear, and check the database for tables `user`, `user_kitchen`, `recipe`.
+
 ## General Workflow
 
 By default, the dependencies are managed with [uv](https://docs.astral.sh/uv/), go there and install it.
