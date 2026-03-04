@@ -1,33 +1,60 @@
 import { Tabs } from 'expo-router';
-import React from 'react';
+import { Platform, Text } from 'react-native';
+import { Colors, Fonts } from '@/constants/theme';
 
-import { HapticTab } from '@/components/haptic-tab';
-import { IconSymbol } from '@/components/ui/icon-symbol';
-import { Colors } from '@/constants/theme';
-import { useColorScheme } from '@/hooks/use-color-scheme';
+function TabIcon({ emoji, focused }: { emoji: string; focused: boolean }) {
+  return (
+    <Text style={{ fontSize: 22, opacity: focused ? 1 : 0.5 }}>{emoji}</Text>
+  );
+}
 
 export default function TabLayout() {
-  const colorScheme = useColorScheme();
-
   return (
     <Tabs
       screenOptions={{
-        tabBarActiveTintColor: Colors[colorScheme ?? 'light'].tint,
         headerShown: false,
-        tabBarButton: HapticTab,
-      }}>
+        tabBarStyle: {
+          backgroundColor: Colors.foundation,
+          borderTopWidth: 0,
+          height: Platform.OS === 'ios' ? 88 : 64,
+          paddingBottom: Platform.OS === 'ios' ? 28 : 8,
+          paddingTop: 8,
+        },
+        tabBarActiveTintColor: Colors.primary,
+        tabBarInactiveTintColor: `${Colors.white}60`,
+        tabBarLabelStyle: {
+          fontFamily: Fonts.body,
+          fontSize: 11,
+          marginTop: 2,
+        },
+      }}
+    >
       <Tabs.Screen
         name="index"
         options={{
           title: 'Home',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="house.fill" color={color} />,
+          tabBarIcon: ({ focused }) => <TabIcon emoji="🏠" focused={focused} />,
         }}
       />
       <Tabs.Screen
-        name="explore"
+        name="pantry"
         options={{
-          title: 'Explore',
-          tabBarIcon: ({ color }) => <IconSymbol size={28} name="paperplane.fill" color={color} />,
+          title: 'Pantry',
+          tabBarIcon: ({ focused }) => <TabIcon emoji="🧺" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="meal-plan"
+        options={{
+          title: 'Meal Plan',
+          tabBarIcon: ({ focused }) => <TabIcon emoji="📅" focused={focused} />,
+        }}
+      />
+      <Tabs.Screen
+        name="profile"
+        options={{
+          title: 'Profile',
+          tabBarIcon: ({ focused }) => <TabIcon emoji="👤" focused={focused} />,
         }}
       />
     </Tabs>
